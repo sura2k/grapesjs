@@ -8492,8 +8492,10 @@ function updateHeightsInViewport(cm) {
 // Read and store the height of line widgets associated with the
 // given line.
 function updateWidgetHeight(line) {
-  if (line.widgets) { for (var i = 0; i < line.widgets.length; ++i)
-    { line.widgets[i].height = line.widgets[i].node.parentNode.offsetHeight; } }
+  if (line.widgets) { for (var i = 0; i < line.widgets.length; ++i) {
+    var w = line.widgets[i], parent = w.node.parentNode;
+    if (parent) { w.height = parent.offsetHeight; }
+  } }
 }
 
 // Compute the lines that are visible in a given viewport (defaults
@@ -12289,18 +12291,26 @@ function lookupKeyForEditor(cm, name, handle) {
 // for bound mouse clicks.
 
 var stopSeq = new Delayed;
+
 function dispatchKey(cm, name, e, handle) {
   var seq = cm.state.keySeq;
   if (seq) {
     if (isModifierKey(name)) { return "handled" }
-    stopSeq.set(50, function () {
-      if (cm.state.keySeq == seq) {
-        cm.state.keySeq = null;
-        cm.display.input.reset();
-      }
-    });
-    name = seq + " " + name;
+    if (/\'$/.test(name))
+      { cm.state.keySeq = null; }
+    else
+      { stopSeq.set(50, function () {
+        if (cm.state.keySeq == seq) {
+          cm.state.keySeq = null;
+          cm.display.input.reset();
+        }
+      }); }
+    if (dispatchKeyInner(cm, seq + " " + name, e, handle)) { return true }
   }
+  return dispatchKeyInner(cm, name, e, handle)
+}
+
+function dispatchKeyInner(cm, name, e, handle) {
   var result = lookupKeyForEditor(cm, name, handle);
 
   if (result == "multi")
@@ -12313,10 +12323,6 @@ function dispatchKey(cm, name, e, handle) {
     restartBlink(cm);
   }
 
-  if (seq && !result && /\'$/.test(name)) {
-    e_preventDefault(e);
-    return true
-  }
   return !!result
 }
 
@@ -14868,7 +14874,7 @@ CodeMirror$1.fromTextArea = fromTextArea;
 
 addLegacyProps(CodeMirror$1);
 
-CodeMirror$1.version = "5.31.0";
+CodeMirror$1.version = "5.32.0";
 
 return CodeMirror$1;
 
@@ -16116,6 +16122,15 @@ module.exports = Backbone.Collection.extend({
     var result = [];
     this.each(function (selector) {
       return result.push(selector.getFullName());
+    });
+    return result.join('').trim();
+  },
+  getActiveString: function getActiveString() {
+    var result = [];
+    this.each(function (selector) {
+      if (selector.get('active')) {
+        result.push(selector.getFullName());
+      }
     });
     return result.join('').trim();
   }
@@ -21618,139 +21633,139 @@ var Selectors = __webpack_require__(10);
 
 module.exports = Backbone.Model.extend(_Styleable2.default).extend({
 
-  defaults: {
-    // Css selectors
-    selectors: {},
+    defaults: {
+        // Css selectors
+        selectors: {},
 
-    // Additional string css selectors
-    selectorsAdd: '',
+        // Additional string css selectors
+        selectorsAdd: '',
 
-    // Css properties style
-    style: {},
+        // Css properties style
+        style: {},
 
-    // On which device width this rule should be rendered, eg. @media (max-width: 1000px)
-    mediaText: '',
+        // On which device width this rule should be rendered, eg. @media (max-width: 1000px)
+        mediaText: '',
 
-    // State of the rule, eg: hover | pressed | focused
-    state: '',
+        // State of the rule, eg: hover | pressed | focused
+        state: '',
 
-    // Indicates if the rule is stylable
-    stylable: true,
+        // Indicates if the rule is stylable
+        stylable: true,
 
-    // If true, sets '!important' on all properties
-    // You can use an array to specify properties to set important
-    // Used in view
-    important: 0
-  },
+        // If true, sets '!important' on all properties
+        // You can use an array to specify properties to set important
+        // Used in view
+        important: 0
+    },
 
-  initialize: function initialize(c) {
-    var opt = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+    initialize: function initialize(c) {
+        var opt = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
 
-    this.config = c || {};
-    var em = opt.em;
-    var selectors = this.config.selectors || [];
-    this.em = em;
+        this.config = c || {};
+        var em = opt.em;
+        var selectors = this.config.selectors || [];
+        this.em = em;
 
-    if (em) {
-      var sm = em.get('SelectorManager');
-      var slct = [];
-      selectors.forEach(function (selector) {
-        slct.push(sm.add(selector));
-      });
-      selectors = slct;
+        if (em) {
+            var sm = em.get('SelectorManager');
+            var slct = [];
+            selectors.forEach(function (selector) {
+                slct.push(sm.add(selector));
+            });
+            selectors = slct;
+        }
+
+        this.set('selectors', new Selectors(selectors));
+    },
+
+
+    /**
+     * Return selectors fo the rule as a string
+     * @return {string}
+     */
+    selectorsToString: function selectorsToString() {
+        var opts = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+
+        var result = [];
+        var state = this.get('state');
+        var addSelector = this.get('selectorsAdd');
+        var selectors = this.get('selectors').getFullString();
+        var stateStr = state ? ':' + state : '';
+        selectors && result.push('' + selectors + stateStr);
+        addSelector && !opts.skipAdd && result.push(addSelector);
+        return result.join(', ');
+    },
+
+
+    /**
+     * Returns CSS string of the rule
+     * @param {Object} [opts={}] Options
+     * @return {string}
+     */
+    toCSS: function toCSS() {
+        var opts = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+
+        var result = '';
+        var media = this.get('mediaText');
+        var style = this.styleToString(opts);
+        var selectors = this.selectorsToString();
+
+        if (selectors && style) {
+            result = selectors + '{' + style + '}';
+        }
+
+        if (media && result) {
+            result = '@media ' + media + '{' + result + '}';
+        }
+
+        return result;
+    },
+
+
+    /**
+     * Compare the actual model with parameters
+     * @param   {Object} selectors Collection of selectors
+     * @param   {String} state Css rule state
+     * @param   {String} width For which device this style is oriented
+     * @param {Object} ruleProps Other rule props
+     * @return  {Boolean}
+     * @private
+     */
+    compare: function compare(selectors, state, width, ruleProps) {
+        var otherRule = ruleProps || {};
+        var st = state || '';
+        var wd = width || '';
+        var selectorsAdd = otherRule.selectorsAdd || '';
+        var cId = 'cid';
+        //var a1 = _.pluck(selectors.models || selectors, cId);
+        //var a2 = _.pluck(this.get('selectors').models, cId);
+        if (!(selectors instanceof Array) && !selectors.models) selectors = [selectors];
+        var a1 = _.map(selectors.models || selectors, function (model) {
+            return model.get('name');
+        });
+        var a2 = _.map(this.get('selectors').models, function (model) {
+            return model.get('name');
+        });
+        var f = false;
+
+        if (a1.length !== a2.length) return f;
+
+        for (var i = 0; i < a1.length; i++) {
+            var re = 0;
+            for (var j = 0; j < a2.length; j++) {
+                if (a1[i] === a2[j]) re = 1;
+            }
+            if (re === 0) return f;
+        }
+
+        if (this.get('state') !== st) return f;
+
+        if (this.get('mediaText') !== wd) return f;
+
+        if (this.get('selectorsAdd') !== selectorsAdd) return f;
+
+        return true;
     }
-
-    this.set('selectors', new Selectors(selectors));
-  },
-
-
-  /**
-   * Return selectors fo the rule as a string
-   * @return {string}
-   */
-  selectorsToString: function selectorsToString() {
-    var opts = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
-
-    var result = [];
-    var state = this.get('state');
-    var addSelector = this.get('selectorsAdd');
-    var selectors = this.get('selectors').getFullString();
-    var stateStr = state ? ':' + state : '';
-    selectors && result.push('' + selectors + stateStr);
-    addSelector && !opts.skipAdd && result.push(addSelector);
-    return result.join(', ');
-  },
-
-
-  /**
-   * Returns CSS string of the rule
-   * @param {Object} [opts={}] Options
-   * @return {string}
-   */
-  toCSS: function toCSS() {
-    var opts = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
-
-    var result = '';
-    var media = this.get('mediaText');
-    var style = this.styleToString(opts);
-    var selectors = this.selectorsToString();
-
-    if (selectors && style) {
-      result = selectors + '{' + style + '}';
-    }
-
-    if (media && result) {
-      result = '@media ' + media + '{' + result + '}';
-    }
-
-    return result;
-  },
-
-
-  /**
-   * Compare the actual model with parameters
-   * @param   {Object} selectors Collection of selectors
-   * @param   {String} state Css rule state
-   * @param   {String} width For which device this style is oriented
-   * @param {Object} ruleProps Other rule props
-   * @return  {Boolean}
-   * @private
-   */
-  compare: function compare(selectors, state, width, ruleProps) {
-    var otherRule = ruleProps || {};
-    var st = state || '';
-    var wd = width || '';
-    var selectorsAdd = otherRule.selectorsAdd || '';
-    var cId = 'cid';
-    //var a1 = _.pluck(selectors.models || selectors, cId);
-    //var a2 = _.pluck(this.get('selectors').models, cId);
-    if (!(selectors instanceof Array) && !selectors.models) selectors = [selectors];
-    var a1 = _.map(selectors.models || selectors, function (model) {
-      return model.get('name');
-    });
-    var a2 = _.map(this.get('selectors').models, function (model) {
-      return model.get('name');
-    });
-    var f = false;
-
-    if (a1.length !== a2.length) return f;
-
-    for (var i = 0; i < a1.length; i++) {
-      var re = 0;
-      for (var j = 0; j < a2.length; j++) {
-        if (a1[i] === a2[j]) re = 1;
-      }
-      if (re === 0) return f;
-    }
-
-    if (this.get('state') !== st) return f;
-
-    if (this.get('mediaText') !== wd) return f;
-
-    if (this.get('selectorsAdd') !== selectorsAdd) return f;
-
-    return true;
-  }
 });
 /* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(1)))
 
@@ -23059,7 +23074,7 @@ module.exports = function () {
     plugins: plugins,
 
     // Will be replaced on build
-    version: '0.12.45',
+    version: '<# VERSION #>',
 
     /**
      * Initializes an editor based on passed options
@@ -23170,528 +23185,528 @@ var _cashDom2 = _interopRequireDefault(_cashDom);
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 module.exports = function (config) {
-  var c = config || {},
-      defaults = __webpack_require__(61),
-      EditorModel = __webpack_require__(62),
-      EditorView = __webpack_require__(211);
-
-  for (var name in defaults) {
-    if (!(name in c)) c[name] = defaults[name];
-  }
-
-  c.pStylePrefix = c.stylePrefix;
-  var em = new EditorModel(c);
-  var editorView = new EditorView({
-    model: em,
-    config: c
-  });
-
-  return {
-
-    $: _cashDom2.default,
-
-    /**
-     * @property {EditorModel}
-     * @private
-     */
-    editor: em,
-
-    /**
-     * @property {DomComponents}
-     * @private
-     */
-    DomComponents: em.get('DomComponents'),
-
-    /**
-     * @property {CssComposer}
-     * @private
-     */
-    CssComposer: em.get('CssComposer'),
-
-    /**
-     * @property {StorageManager}
-     * @private
-     */
-    StorageManager: em.get('StorageManager'),
-
-    /**
-     * @property {AssetManager}
-     */
-    AssetManager: em.get('AssetManager'),
-
-    /**
-     * @property {BlockManager}
-     * @private
-     */
-    BlockManager: em.get('BlockManager'),
-
-    /**
-     * @property {TraitManager}
-     * @private
-     */
-    TraitManager: em.get('TraitManager'),
-
-    /**
-     * @property {SelectorManager}
-     * @private
-     */
-    SelectorManager: em.get('SelectorManager'),
-
-    /**
-     * @property {CodeManager}
-     * @private
-     */
-    CodeManager: em.get('CodeManager'),
-
-    /**
-     * @property {Commands}
-     * @private
-     */
-    Commands: em.get('Commands'),
-
-    /**
-     * @property {Keymaps}
-     * @private
-     */
-    Keymaps: em.get('Keymaps'),
-
-    /**
-     * @property {Modal}
-     * @private
-     */
-    Modal: em.get('Modal'),
-
-    /**
-     * @property {Panels}
-     * @private
-     */
-    Panels: em.get('Panels'),
-
-    /**
-     * @property {StyleManager}
-     * @private
-     */
-    StyleManager: em.get('StyleManager'),
-
-    /**
-     * @property {Canvas}
-     * @private
-     */
-    Canvas: em.get('Canvas'),
-
-    /**
-     * @property {UndoManager}
-     * @private
-     */
-    UndoManager: em.get('UndoManager'),
-
-    /**
-     * @property {DeviceManager}
-     * @private
-     */
-    DeviceManager: em.get('DeviceManager'),
-
-    /**
-     * @property {RichTextEditor}
-     * @private
-     */
-    RichTextEditor: em.get('RichTextEditor'),
-
-    /**
-     * @property {Utils}
-     * @private
-     */
-    Utils: em.get('Utils'),
-
-    /**
-     * @property {Utils}
-     * @private
-     */
-    Config: em.get('Config'),
-
-    /**
-     * Initialize editor model
-     * @return {this}
-     * @private
-     */
-    init: function init() {
-      em.init(this);
-      return this;
-    },
-
-
-    /**
-     * Returns configuration object
-     * @param  {string} [prop] Property name
-     * @return {any} Returns the configuration object or
-     *  the value of the specified property
-     */
-    getConfig: function getConfig(prop) {
-      return em.getConfig(prop);
-    },
-
-
-    /**
-     * Returns HTML built inside canvas
-     * @return {string} HTML string
-     */
-    getHtml: function getHtml() {
-      return em.getHtml();
-    },
-
-
-    /**
-     * Returns CSS built inside canvas
-     * @return {string} CSS string
-     */
-    getCss: function getCss() {
-      return em.getCss();
-    },
-
-
-    /**
-     * Returns JS of all components
-     * @return {string} JS string
-     */
-    getJs: function getJs() {
-      return em.getJs();
-    },
-
-
-    /**
-     * Returns components in JSON format object
-     * @return {Object}
-     */
-    getComponents: function getComponents() {
-      return em.get('DomComponents').getComponents();
-    },
-
-
-    /**
-     * Set components inside editor's canvas. This method overrides actual components
-     * @param {Array<Object>|Object|string} components HTML string or components model
-     * @return {this}
-     * @example
-     * editor.setComponents('<div class="cls">New component</div>');
-     * // or
-     * editor.setComponents({
-     *  type: 'text',
-     *   classes:['cls'],
-     *   content: 'New component'
-     * });
-     */
-    setComponents: function setComponents(components) {
-      em.setComponents(components);
-      return this;
-    },
-
-
-    /**
-     * Add components
-     * @param {Array<Object>|Object|string} components HTML string or components model
-     * @param {Object} opts Options
-     * @param {Boolean} [opts.avoidUpdateStyle=false] If the HTML string contains styles,
-     * by default, they will be created and, if already exist, updated. When this option
-     * is true, styles already created will not be updated.
-     * @return {Model|Array<Model>}
-     * @example
-     * editor.addComponents('<div class="cls">New component</div>');
-     * // or
-     * editor.addComponents({
-     *  type: 'text',
-     *   classes:['cls'],
-     *   content: 'New component'
-     * });
-     */
-    addComponents: function addComponents(components, opts) {
-      return this.getComponents().add(components, opts);
-    },
-
-
-    /**
-     * Returns style in JSON format object
-     * @return {Object}
-     */
-    getStyle: function getStyle() {
-      return em.get('CssComposer').getAll();
-    },
-
-
-    /**
-     * Set style inside editor's canvas. This method overrides actual style
-     * @param {Array<Object>|Object|string} style CSS string or style model
-     * @return {this}
-     * @example
-     * editor.setStyle('.cls{color: red}');
-     * //or
-     * editor.setStyle({
-     *   selectors: ['cls']
-     *   style: { color: 'red' }
-     * });
-     */
-    setStyle: function setStyle(style) {
-      em.setStyle(style);
-      return this;
-    },
-
-
-    /**
-     * Returns selected component, if there is one
-     * @return {Model}
-     */
-    getSelected: function getSelected() {
-      return em.getSelected();
-    },
-
-
-    /**
-     * Get a stylable entity from the selected component.
-     * If you select a component without classes the entity is the Component
-     * itself and all changes will go inside its 'style' attribute. Otherwise,
-     * if the selected component has one or more classes, the function will
-     * return the corresponding CSS Rule
-     * @return {Model}
-     */
-    getSelectedToStyle: function getSelectedToStyle() {
-      var selected = em.getSelected();
-
-      if (selected) {
-        return this.StyleManager.getModelToStyle(selected);
-      }
-    },
-
-
-    /**
-     * Select a component
-     * @param  {Component|HTMLElement} el Component to select
-     * @return {this}
-     * @example
-     * // Select dropped block
-     * editor.on('block:drag:stop', function(model) {
-     *  editor.select(model);
-     * });
-     */
-    select: function select(el) {
-      em.setSelected(el);
-      return this;
-    },
-
-
-    /**
-     * Set device to the editor. If the device exists it will
-     * change the canvas to the proper width
-     * @param {string} name Name of the device
-     * @return {this}
-     * @example
-     * editor.setDevice('Tablet');
-     */
-    setDevice: function setDevice(name) {
-      em.set('device', name);
-      return this;
-    },
-
-
-    /**
-     * Return the actual active device
-     * @return {string} Device name
-     * @example
-     * var device = editor.getDevice();
-     * console.log(device);
-     * // 'Tablet'
-     */
-    getDevice: function getDevice() {
-      return em.get('device');
-    },
-
-
-    /**
-     * Execute command
-     * @param {string} id Command ID
-     * @param {Object} options Custom options
-     * @return {*} The return is defined by the command
-     * @example
-     * editor.runCommand('myCommand', {someValue: 1});
-     */
-    runCommand: function runCommand(id, options) {
-      var result;
-      var command = em.get('Commands').get(id);
-
-      if (command) {
-        result = command.run(this, this, options);
-        this.trigger('run:' + id);
-      }
-      return result;
-    },
-
-
-    /**
-     * Stop the command if stop method was provided
-     * @param {string} id Command ID
-     * @param {Object} options Custom options
-     * @return {*} The return is defined by the command
-     * @example
-     * editor.stopCommand('myCommand', {someValue: 1});
-     */
-    stopCommand: function stopCommand(id, options) {
-      var result;
-      var command = em.get('Commands').get(id);
-
-      if (command) {
-        result = command.stop(this, this, options);
-        this.trigger('stop:' + id);
-      }
-      return result;
-    },
-
-
-    /**
-     * Store data to the current storage
-     * @param {Function} clb Callback function
-     * @return {Object} Stored data
-     */
-    store: function store(clb) {
-      return em.store(clb);
-    },
-
-
-    /**
-     * Load data from the current storage
-     * @param {Function} clb Callback function
-     * @return {Object} Stored data
-     */
-    load: function load(clb) {
-      return em.load(clb);
-    },
-
-
-    /**
-     * Returns container element. The one which was indicated as 'container'
-     * on init method
-     * @return {HTMLElement}
-     */
-    getContainer: function getContainer() {
-      return c.el;
-    },
-
-
-    /**
-     * Update editor dimensions and refresh data useful for positioning of tools
-     *
-     * This method could be useful when you update, for example, some position
-     * of the editor element (eg. canvas, panels, etc.) with CSS, where without
-     * refresh you'll get misleading position of tools (eg. rich text editor,
-     * component highlighter, etc.)
-     *
-     * @private
-     */
-    refresh: function refresh() {
-      em.refreshCanvas();
-    },
-
-
-    /**
-     * Replace the built-in Rich Text Editor with a custom one.
-     * @param {Object} obj Custom RTE Interface
-     * @example
-     * editor.setCustomRte({
-     *   // Function for enabling custom RTE
-     *   // el is the HTMLElement of the double clicked Text Component
-     *   // rte is the same instance you have returned the first time you call
-     *   // enable(). This is useful if need to check if the RTE is already enabled so
-     *   // ion this case you'll need to return the RTE and the end of the function
-     *   enable: function(el, rte) {
-     *     rte = new MyCustomRte(el, {}); // this depends on the Custom RTE API
-     *     ...
-     *     return rte; // return the RTE instance
-     *   },
-     *
-     *   // Disable the editor, called for example when you unfocus the Text Component
-     *  disable: function(el, rte) {
-     *     rte.blur(); // this depends on the Custom RTE API
-     *  }
-     *
-     * // Called when the Text Component is focused again. If you returned the RTE instance
-     * // from the enable function, the enable won't be called again instead will call focus,
-     * // in this case to avoid double binding of the editor
-     *  focus: function (el, rte) {
-     *   rte.focus(); // this depends on the Custom RTE API
-     *  }
-     * });
-     */
-    setCustomRte: function setCustomRte(obj) {
-      this.RichTextEditor.customRte = obj;
-    },
-
-
-    /**
-     * Attach event
-     * @param  {string} event Event name
-     * @param  {Function} callback Callback function
-     * @return {this}
-     */
-    on: function on(event, callback) {
-      return em.on(event, callback);
-    },
-
-
-    /**
-     * Detach event
-     * @param  {string} event Event name
-     * @param  {Function} callback Callback function
-     * @return {this}
-     */
-    off: function off(event, callback) {
-      return em.off(event, callback);
-    },
-
-
-    /**
-     * Trigger event
-     * @param  {string} event Event to trigger
-     * @return {this}
-     */
-    trigger: function trigger(event) {
-      return em.trigger.apply(em, arguments);
-    },
-
-
-    /**
-     * Returns editor element
-     * @return {HTMLElement}
-     * @private
-     */
-    getEl: function getEl() {
-      return editorView.el;
-    },
-
-
-    /**
-     * Returns editor model
-     * @return {Model}
-     * @private
-     */
-    getModel: function getModel() {
-      return em;
-    },
-
-
-    /**
-     * Render editor
-     * @return {HTMLElement}
-     */
-    render: function render() {
-      // Do post render stuff after the iframe is loaded otherwise it'll
-      // be empty during tests
-      em.on('loaded', function () {
-        em.get('modules').forEach(function (module) {
-          module.postRender && module.postRender(editorView);
-        });
-      });
-
-      editorView.render();
-      return editorView.el;
+    var c = config || {},
+        defaults = __webpack_require__(61),
+        EditorModel = __webpack_require__(62),
+        EditorView = __webpack_require__(211);
+
+    for (var name in defaults) {
+        if (!(name in c)) c[name] = defaults[name];
     }
-  };
+
+    c.pStylePrefix = c.stylePrefix;
+    var em = new EditorModel(c);
+    var editorView = new EditorView({
+        model: em,
+        config: c
+    });
+
+    return {
+
+        $: _cashDom2.default,
+
+        /**
+         * @property {EditorModel}
+         * @private
+         */
+        editor: em,
+
+        /**
+         * @property {DomComponents}
+         * @private
+         */
+        DomComponents: em.get('DomComponents'),
+
+        /**
+         * @property {CssComposer}
+         * @private
+         */
+        CssComposer: em.get('CssComposer'),
+
+        /**
+         * @property {StorageManager}
+         * @private
+         */
+        StorageManager: em.get('StorageManager'),
+
+        /**
+         * @property {AssetManager}
+         */
+        AssetManager: em.get('AssetManager'),
+
+        /**
+         * @property {BlockManager}
+         * @private
+         */
+        BlockManager: em.get('BlockManager'),
+
+        /**
+         * @property {TraitManager}
+         * @private
+         */
+        TraitManager: em.get('TraitManager'),
+
+        /**
+         * @property {SelectorManager}
+         * @private
+         */
+        SelectorManager: em.get('SelectorManager'),
+
+        /**
+         * @property {CodeManager}
+         * @private
+         */
+        CodeManager: em.get('CodeManager'),
+
+        /**
+         * @property {Commands}
+         * @private
+         */
+        Commands: em.get('Commands'),
+
+        /**
+         * @property {Keymaps}
+         * @private
+         */
+        Keymaps: em.get('Keymaps'),
+
+        /**
+         * @property {Modal}
+         * @private
+         */
+        Modal: em.get('Modal'),
+
+        /**
+         * @property {Panels}
+         * @private
+         */
+        Panels: em.get('Panels'),
+
+        /**
+         * @property {StyleManager}
+         * @private
+         */
+        StyleManager: em.get('StyleManager'),
+
+        /**
+         * @property {Canvas}
+         * @private
+         */
+        Canvas: em.get('Canvas'),
+
+        /**
+         * @property {UndoManager}
+         * @private
+         */
+        UndoManager: em.get('UndoManager'),
+
+        /**
+         * @property {DeviceManager}
+         * @private
+         */
+        DeviceManager: em.get('DeviceManager'),
+
+        /**
+         * @property {RichTextEditor}
+         * @private
+         */
+        RichTextEditor: em.get('RichTextEditor'),
+
+        /**
+         * @property {Utils}
+         * @private
+         */
+        Utils: em.get('Utils'),
+
+        /**
+         * @property {Utils}
+         * @private
+         */
+        Config: em.get('Config'),
+
+        /**
+         * Initialize editor model
+         * @return {this}
+         * @private
+         */
+        init: function init() {
+            em.init(this);
+            return this;
+        },
+
+
+        /**
+         * Returns configuration object
+         * @param  {string} [prop] Property name
+         * @return {any} Returns the configuration object or
+         *  the value of the specified property
+         */
+        getConfig: function getConfig(prop) {
+            return em.getConfig(prop);
+        },
+
+
+        /**
+         * Returns HTML built inside canvas
+         * @return {string} HTML string
+         */
+        getHtml: function getHtml() {
+            return em.getHtml();
+        },
+
+
+        /**
+         * Returns CSS built inside canvas
+         * @return {string} CSS string
+         */
+        getCss: function getCss() {
+            return em.getCss();
+        },
+
+
+        /**
+         * Returns JS of all components
+         * @return {string} JS string
+         */
+        getJs: function getJs() {
+            return em.getJs();
+        },
+
+
+        /**
+         * Returns components in JSON format object
+         * @return {Object}
+         */
+        getComponents: function getComponents() {
+            return em.get('DomComponents').getComponents();
+        },
+
+
+        /**
+         * Set components inside editor's canvas. This method overrides actual components
+         * @param {Array<Object>|Object|string} components HTML string or components model
+         * @return {this}
+         * @example
+         * editor.setComponents('<div class="cls">New component</div>');
+         * // or
+         * editor.setComponents({
+         *  type: 'text',
+         *   classes:['cls'],
+         *   content: 'New component'
+         * });
+         */
+        setComponents: function setComponents(components) {
+            em.setComponents(components);
+            return this;
+        },
+
+
+        /**
+         * Add components
+         * @param {Array<Object>|Object|string} components HTML string or components model
+         * @param {Object} opts Options
+         * @param {Boolean} [opts.avoidUpdateStyle=false] If the HTML string contains styles,
+         * by default, they will be created and, if already exist, updated. When this option
+         * is true, styles already created will not be updated.
+         * @return {Model|Array<Model>}
+         * @example
+         * editor.addComponents('<div class="cls">New component</div>');
+         * // or
+         * editor.addComponents({
+         *  type: 'text',
+         *   classes:['cls'],
+         *   content: 'New component'
+         * });
+         */
+        addComponents: function addComponents(components, opts) {
+            return this.getComponents().add(components, opts);
+        },
+
+
+        /**
+         * Returns style in JSON format object
+         * @return {Object}
+         */
+        getStyle: function getStyle() {
+            return em.get('CssComposer').getAll();
+        },
+
+
+        /**
+         * Set style inside editor's canvas. This method overrides actual style
+         * @param {Array<Object>|Object|string} style CSS string or style model
+         * @return {this}
+         * @example
+         * editor.setStyle('.cls{color: red}');
+         * //or
+         * editor.setStyle({
+         *   selectors: ['cls']
+         *   style: { color: 'red' }
+         * });
+         */
+        setStyle: function setStyle(style) {
+            em.setStyle(style);
+            return this;
+        },
+
+
+        /**
+         * Returns selected component, if there is one
+         * @return {Model}
+         */
+        getSelected: function getSelected() {
+            return em.getSelected();
+        },
+
+
+        /**
+         * Get a stylable entity from the selected component.
+         * If you select a component without classes the entity is the Component
+         * itself and all changes will go inside its 'style' attribute. Otherwise,
+         * if the selected component has one or more classes, the function will
+         * return the corresponding CSS Rule
+         * @return {Model}
+         */
+        getSelectedToStyle: function getSelectedToStyle() {
+            var selected = em.getSelected();
+
+            if (selected) {
+                return this.StyleManager.getModelToStyle(selected);
+            }
+        },
+
+
+        /**
+         * Select a component
+         * @param  {Component|HTMLElement} el Component to select
+         * @return {this}
+         * @example
+         * // Select dropped block
+         * editor.on('block:drag:stop', function(model) {
+         *  editor.select(model);
+         * });
+         */
+        select: function select(el) {
+            em.setSelected(el);
+            return this;
+        },
+
+
+        /**
+         * Set device to the editor. If the device exists it will
+         * change the canvas to the proper width
+         * @param {string} name Name of the device
+         * @return {this}
+         * @example
+         * editor.setDevice('Tablet');
+         */
+        setDevice: function setDevice(name) {
+            em.set('device', name);
+            return this;
+        },
+
+
+        /**
+         * Return the actual active device
+         * @return {string} Device name
+         * @example
+         * var device = editor.getDevice();
+         * console.log(device);
+         * // 'Tablet'
+         */
+        getDevice: function getDevice() {
+            return em.get('device');
+        },
+
+
+        /**
+         * Execute command
+         * @param {string} id Command ID
+         * @param {Object} options Custom options
+         * @return {*} The return is defined by the command
+         * @example
+         * editor.runCommand('myCommand', {someValue: 1});
+         */
+        runCommand: function runCommand(id, options) {
+            var result;
+            var command = em.get('Commands').get(id);
+
+            if (command) {
+                result = command.run(this, this, options);
+                this.trigger('run:' + id);
+            }
+            return result;
+        },
+
+
+        /**
+         * Stop the command if stop method was provided
+         * @param {string} id Command ID
+         * @param {Object} options Custom options
+         * @return {*} The return is defined by the command
+         * @example
+         * editor.stopCommand('myCommand', {someValue: 1});
+         */
+        stopCommand: function stopCommand(id, options) {
+            var result;
+            var command = em.get('Commands').get(id);
+
+            if (command) {
+                result = command.stop(this, this, options);
+                this.trigger('stop:' + id);
+            }
+            return result;
+        },
+
+
+        /**
+         * Store data to the current storage
+         * @param {Function} clb Callback function
+         * @return {Object} Stored data
+         */
+        store: function store(clb) {
+            return em.store(clb);
+        },
+
+
+        /**
+         * Load data from the current storage
+         * @param {Function} clb Callback function
+         * @return {Object} Stored data
+         */
+        load: function load(clb) {
+            return em.load(clb);
+        },
+
+
+        /**
+         * Returns container element. The one which was indicated as 'container'
+         * on init method
+         * @return {HTMLElement}
+         */
+        getContainer: function getContainer() {
+            return c.el;
+        },
+
+
+        /**
+         * Update editor dimensions and refresh data useful for positioning of tools
+         *
+         * This method could be useful when you update, for example, some position
+         * of the editor element (eg. canvas, panels, etc.) with CSS, where without
+         * refresh you'll get misleading position of tools (eg. rich text editor,
+         * component highlighter, etc.)
+         *
+         * @private
+         */
+        refresh: function refresh() {
+            em.refreshCanvas();
+        },
+
+
+        /**
+         * Replace the built-in Rich Text Editor with a custom one.
+         * @param {Object} obj Custom RTE Interface
+         * @example
+         * editor.setCustomRte({
+         *   // Function for enabling custom RTE
+         *   // el is the HTMLElement of the double clicked Text Component
+         *   // rte is the same instance you have returned the first time you call
+         *   // enable(). This is useful if need to check if the RTE is already enabled so
+         *   // ion this case you'll need to return the RTE and the end of the function
+         *   enable: function(el, rte) {
+         *     rte = new MyCustomRte(el, {}); // this depends on the Custom RTE API
+         *     ...
+         *     return rte; // return the RTE instance
+         *   },
+         *
+         *   // Disable the editor, called for example when you unfocus the Text Component
+         *  disable: function(el, rte) {
+         *     rte.blur(); // this depends on the Custom RTE API
+         *  }
+         *
+         * // Called when the Text Component is focused again. If you returned the RTE instance
+         * // from the enable function, the enable won't be called again instead will call focus,
+         * // in this case to avoid double binding of the editor
+         *  focus: function (el, rte) {
+         *   rte.focus(); // this depends on the Custom RTE API
+         *  }
+         * });
+         */
+        setCustomRte: function setCustomRte(obj) {
+            this.RichTextEditor.customRte = obj;
+        },
+
+
+        /**
+         * Attach event
+         * @param  {string} event Event name
+         * @param  {Function} callback Callback function
+         * @return {this}
+         */
+        on: function on(event, callback) {
+            return em.on(event, callback);
+        },
+
+
+        /**
+         * Detach event
+         * @param  {string} event Event name
+         * @param  {Function} callback Callback function
+         * @return {this}
+         */
+        off: function off(event, callback) {
+            return em.off(event, callback);
+        },
+
+
+        /**
+         * Trigger event
+         * @param  {string} event Event to trigger
+         * @return {this}
+         */
+        trigger: function trigger(event) {
+            return em.trigger.apply(em, arguments);
+        },
+
+
+        /**
+         * Returns editor element
+         * @return {HTMLElement}
+         * @private
+         */
+        getEl: function getEl() {
+            return editorView.el;
+        },
+
+
+        /**
+         * Returns editor model
+         * @return {Model}
+         * @private
+         */
+        getModel: function getModel() {
+            return em;
+        },
+
+
+        /**
+         * Render editor
+         * @return {HTMLElement}
+         */
+        render: function render() {
+            // Do post render stuff after the iframe is loaded otherwise it'll
+            // be empty during tests
+            em.on('loaded', function () {
+                em.get('modules').forEach(function (module) {
+                    module.postRender && module.postRender(editorView);
+                });
+            });
+
+            editorView.render();
+            return editorView.el;
+        }
+    };
 }; /**
     * Editor class contains the top level API which you'll probably use to custom the editor or extend it with plugins.
     * You get the Editor instance on init method
@@ -25616,7 +25631,11 @@ module.exports = Backbone.View.extend({
     var dragHelper = this.dragHelper;
 
     if (dragHelper) {
-      dragHelper.remove();
+      try {
+        dragHelper.remove();
+      } catch (e) {
+        dragHelper.parentNode.removeChild(dragHelper);
+      }
       this.dragHelper = null;
     }
 
@@ -28707,7 +28726,32 @@ module.exports = {
   selectedLabel: 'Selected',
 
   // States
-  states: [{ name: 'hover', label: 'Hover' }, { name: 'active', label: 'Click' }, { name: 'nth-of-type(2n)', label: 'Even/Odd' }]
+  states: [{ name: 'hover', label: 'Hover' }, { name: 'active', label: 'Click' }, { name: 'nth-of-type(2n)', label: 'Even/Odd' }],
+
+  advanceMode: {
+    enable: true,
+
+    // Label for appliesto state
+    appliestoLabel: 'Applies To',
+
+    //Optional, If not provided default 'label' will be used
+    behaviourLabel: 'Behaviour',
+    //Optional, If not provided default 'statesLabel' will be used
+    behaviourStatesDefaultOptionLabel: 'Static',
+    //Optional, If true, only default state will be applied, i.e. no states
+    useDefaultBehaviour: true,
+
+    // Appliesto labels
+    appliestoOptionItemLabel: 'Selected Item',
+    appliestoOptionCustomGroupLabel: 'Custom Group',
+
+    resetItemStylesLabel: 'Reset Styles',
+
+    removeCustomGroupDialogTitle: 'Remove Custom Group Style',
+    removeCustomGroupFromSelectedItemLable: 'From Current Item',
+    removeCustomGroupFromAllItemLable: 'From All Items'
+  }
+
 };
 
 /***/ }),
@@ -28720,8 +28764,10 @@ module.exports = {
 var Backbone = __webpack_require__(0);
 var ClassTagView = __webpack_require__(87);
 
-module.exports = Backbone.View.extend({
+var ClassTagsView = Backbone.View.extend({
   template: _.template('\n  <div id="<%= pfx %>up">\n    <div id="<%= pfx %>label"><%= label %></div>\n    <div id="<%= pfx %>status-c">\n      <span id="<%= pfx %>input-c">\n        <div class="<%= ppfx %>field <%= ppfx %>select">\n          <span id="<%= ppfx %>input-holder">\n            <select id="<%= pfx %>states">\n              <option value=""><%= statesLabel %></option>\n            </select>\n          </span>\n          <div class="<%= ppfx %>sel-arrow">\n            <div class="<%= ppfx %>d-s-arrow"></div>\n          </div>\n        </div>\n      </span>\n    </div>\n  </div>\n  <div id="<%= pfx %>tags-field" class="<%= ppfx %>field">\n    <div id="<%= pfx %>tags-c"></div>\n    <input id="<%= pfx %>new" />\n    <span id="<%= pfx %>add-tag" class="fa fa-plus"></span>\n  </div>\n  <div id="<%= pfx %>sel-help">\n    <div id="<%= pfx %>label"><%= selectedLabel %></div>\n    <div id="<%= pfx %>sel"></div>\n    <div style="clear:both"></div>\n  </div>'),
+
+  templateAdvanceMode: _.template('\n  <!--appliesto selection-->\n  <div id="<%= pfx %>appliesto">\n    <div id="<%= pfx %>appliesto-label"><%= advanceMode.appliestoLabel %></div>\n    <div id="<%= pfx %>appliesto-status">\n      <span id="<%= pfx %>input-appliesto">\n        <div class="<%= ppfx %>field <%= ppfx %>select">\n          <span id="<%= ppfx %>appliesto-input-holder" style="padding-right: 10px;">\n            <select id="<%= pfx %>appliesto-states">\n            </select>\n          </span>\n          <div class="<%= ppfx %>sel-arrow">\n            <div class="<%= ppfx %>d-s-arrow"></div>\n          </div>\n        </div>\n      </span>\n    </div>\n  </div>\n  <!--ends appliesto selection-->\n  <div id="<%= pfx %>up" style="clear:both; <%= advanceMode.defaultBehaviour %>">\n    <div id="<%= pfx %>label"><%= label %></div>\n    <div id="<%= pfx %>status-c">\n      <span id="<%= pfx %>input-c">\n        <div class="<%= ppfx %>field <%= ppfx %>select">\n          <span id="<%= ppfx %>input-holder">\n            <select id="<%= pfx %>states">\n              <option value=""><%= statesLabel %></option>\n            </select>\n          </span>\n          <div class="<%= ppfx %>sel-arrow">\n            <div class="<%= ppfx %>d-s-arrow"></div>\n          </div>\n        </div>\n      </span>\n    </div>\n  </div>\n  <!-- style clear section -->\n  <div id="<%= pfx %>reset-item-style-holder" style="clear:both; margin-top: 36px; margin-bottom: 10px">\n    <span id="<%= pfx %>reset-item-style" class="<%= ppfx %>custom-btn-style"><%= advanceMode.resetItemStylesLabel %></span>\n  </div>\n  <!-- ends style clear section -->\n  <!--class tags section-->\n  <div id="<%= pfx %>tags-field" class="<%= ppfx %>field" style="clear:both;">\n    <div id="<%= pfx %>tags-c"></div>\n    <input id="<%= pfx %>new"/>\n    <span id="<%= pfx %>add-tag" class="fa fa-plus"></span>\n  </div>\n  <!--ends class tags section-->\n  <!--class selector info-->\n  <div id="<%= pfx %>sel-help" style="clear:both;">\n    <div id="<%= pfx %>label"><%= selectedLabel %></div>\n    <div id="<%= pfx %>sel"></div>\n    <div style="clear:both"></div>\n  </div>'),
 
   events: {},
 
@@ -28751,6 +28797,25 @@ module.exports = Backbone.View.extend({
     this.listenTo(this.collection, 'add', this.addNew);
     this.listenTo(this.collection, 'reset', this.renderClasses);
     this.listenTo(this.collection, 'remove', this.tagRemoved);
+
+    if (this.isAdvanceModeValid()) {
+      this.resetStyleBtnContainer = this.pfx + 'reset-item-style-holder';
+      this.customGroupContainer = this.pfx + 'tags-field';
+
+      this.appliestoStateInputId = this.pfx + 'appliesto-states';
+      this.appliestoStates = [{ name: 'item', label: this.config.advanceMode.appliestoOptionItemLabel }, { name: 'customgroup', label: this.config.advanceMode.appliestoOptionCustomGroupLabel }] || [];
+      this.events['change #' + this.appliestoStateInputId] = 'appliestoStateChanged';
+      this.resetItemStyleBtnId = this.pfx + 'reset-item-style';
+      this.events['click #' + this.resetItemStyleBtnId] = 'resetItemStyle';
+
+      //Listen to component:add event to modify default classes
+      //Better to move the logic somewhere else more preferable, but added here to stick with minimum code changes to core
+      if (!ClassTagsView.compAddEventListened) {
+        this.em.on('component:add', this.disableAccessToDefaultClasses_OnCompAdd, this);
+        ClassTagsView.compAddEventListened = true;
+      }
+      this.disableAccessToDefaultClasses_OnInit();
+    }
 
     this.delegateEvents();
   },
@@ -28829,6 +28894,9 @@ module.exports = Backbone.View.extend({
    */
   componentChanged: function componentChanged(e) {
     this.compTarget = this.target.get('selectedComponent');
+    if (this.config.isAdvanceMode) {
+      this.fireAppliestoStateChangeEvent(); //fire applies to state selection
+    }
     var target = this.compTarget;
     var validSelectors = [];
 
@@ -28862,6 +28930,10 @@ module.exports = Backbone.View.extend({
    * @private
    */
   updateSelector: function updateSelector() {
+    if (this.config.isAdvanceMode) {
+      this.updateSelectorAdvanceMode();
+      return;
+    }
     var selected = this.target.getSelected();
     this.compTarget = selected;
 
@@ -28908,6 +28980,12 @@ module.exports = Backbone.View.extend({
     if (target) {
       var sm = target.get('SelectorManager');
       var model = sm.add({ label: label });
+
+      if (this.config.isAdvanceMode) {
+        model.set('active', true);
+        model.set('activeAdvance', true);
+        this.toggelSelectorsArea(true);
+      }
 
       if (component) {
         var compCls = component.get('classes');
@@ -29000,6 +29078,9 @@ module.exports = Backbone.View.extend({
     return this.$statesC;
   },
   render: function render() {
+    if (this.config.isAdvanceMode) {
+      return this.renderAdvanceMode();
+    }
     var config = this.config;
     this.$el.html(this.template({
       selectedLabel: config.selectedLabel,
@@ -29017,8 +29098,300 @@ module.exports = Backbone.View.extend({
     this.renderClasses();
     this.$el.attr('class', this.className);
     return this;
+  },
+
+
+  //-------------------------------------------------------------//
+  //---------------Advance Mode Functions------------------------//
+  //-------------------------------------------------------------//
+
+  getAppliestoStateOptions: function getAppliestoStateOptions() {
+    var strInput = '';
+    for (var i = 0; i < this.appliestoStates.length; i++) {
+      strInput += '<option value="' + this.appliestoStates[i].name + '">' + this.appliestoStates[i].label + '</option>';
+    }
+    return strInput;
+  },
+  fireAppliestoStateChangeEvent: function fireAppliestoStateChangeEvent() {
+    var appliesto = document.getElementById(this.appliestoStateInputId);
+    if (appliesto) {
+      //test fails otherwise
+      appliesto.value = "item";
+      try {
+        console.log('Non IE - appliesto firing..');
+        appliesto.dispatchEvent(new Event('change', { 'bubbles': true }));
+        console.log('Non IE - appliesto fired manually');
+      } catch (e) {
+        //IE 11
+        console.log('IE - appliesto firing...');
+        var event = document.createEvent('Event');
+        event.initEvent('change', true, true);
+        // args: string type, boolean bubbles, boolean cancelable
+        appliesto.dispatchEvent(event);
+        console.log('IE - appliesto fired...');
+      }
+      this.toggelSelectorsArea(true);
+    }
+  },
+  appliestoStateChanged: function appliestoStateChanged(e) {
+    console.log('appliesto select-option changed/fired');
+    if (this.compTarget) {
+      var selectedVal = this.$appliestoStates.val();
+      this.compTarget.set('appliestoState', selectedVal);
+
+      var selFound = true;
+      var isItem = void 0;
+      if (selectedVal === 'item') {
+        isItem = true;
+      } else if (selectedVal === "customgroup") {
+        isItem = false;
+      } else {
+        selFound = false;
+      }
+
+      if (selFound) {
+        var showSelectorArea = false;
+
+        if (isItem) {
+          this.collection.each(function (model) {
+            model.set('active', false);
+          }, this);
+          this.toggelSelectorsArea(true);
+          showSelectorArea = true;
+        } else {
+          var activeFound = false;
+          this.collection.each(function (model) {
+            var activeAdvance = model.get('activeAdvance') || false;
+            model.set('active', activeAdvance);
+            if (activeAdvance) {
+              activeFound = true;
+            }
+          }, this);
+          showSelectorArea = activeFound;
+        }
+
+        if (isItem) {
+          document.getElementById(this.resetStyleBtnContainer).style.display = "block";
+          document.getElementById(this.customGroupContainer).style.display = "none";
+        } else {
+          document.getElementById(this.resetStyleBtnContainer).style.display = "none";
+          document.getElementById(this.customGroupContainer).style.display = "block";
+        }
+
+        document.getElementById(this.stateInputId).value = "";
+
+        this.toggelSelectorsArea(showSelectorArea);
+        this.target.trigger('targetClassUpdated');
+      }
+    }
+  },
+  toggelSelectorsArea: function toggelSelectorsArea(show) {
+    //gjs-sm-sectors
+    if (show) {
+      document.getElementById(this.ppfx + "sm-sectors").style.display = "block";
+    } else {
+      document.getElementById(this.ppfx + "sm-sectors").style.display = "none";
+    }
+  },
+  resetItemStyle: function resetItemStyle(e) {
+    var component = this.compTarget;
+    component.setStyle({}, {});
+    this.target.trigger('targetClassUpdated');
+  },
+
+
+  //NOT_IN_USE
+  //Planned to Call fom componentChanged() just after initializing this.compTarget
+  preserveDefaultsAndProvideDuplicateClasses_OnCompChange: function preserveDefaultsAndProvideDuplicateClasses_OnCompChange() {
+    var utSuffix = "-ag";
+
+    var target = this.target;
+    var component = this.compTarget;
+
+    var nonUserTypePublicClasses = [];
+    if (component) {
+      var classes = component.get('classes');
+      classes.each(function (model) {
+        var claz = model.get('name');
+        if (claz && !claz.endsWith(utSuffix)) {
+          model.set('private', true);
+          nonUserTypePublicClasses.push(claz);
+        }
+      });
+
+      if (target) {
+        var sm = target.get('SelectorManager');
+        nonUserTypePublicClasses.forEach(function (claz) {
+          var label = claz + utSuffix;
+          var model = sm.add({ label: label });
+          component.get('classes').add(model);
+        });
+        target.trigger('targetClassAdded');
+      }
+    }
+  },
+
+
+  //NOT_IN_USE
+  preserveDefaultsAndProvideDuplicateClasses_OnCompAdd: function preserveDefaultsAndProvideDuplicateClasses_OnCompAdd(component) {
+    var suffix = "-ag";
+    this.preserveDefaultsAndAndProvideDuplicates(this.target, component, suffix);
+  },
+
+
+  //NOT_IN_USE
+  preserveDefaultsAndAndProvideDuplicates: function preserveDefaultsAndAndProvideDuplicates(target, component, suffix) {
+    if (!component || !target) {
+      return;
+    }
+
+    //if component
+    var nonUserTypePublicClasses = [];
+    var classes = component.get('classes');
+    classes.each(function (model) {
+      var claz = model.get('name');
+      if (claz && !claz.endsWith(suffix)) {
+        model.set('private', true);
+        nonUserTypePublicClasses.push(claz);
+      }
+    });
+
+    //if component && target
+    var sm = target.get('SelectorManager');
+    nonUserTypePublicClasses.forEach(function (claz) {
+      var label = claz + suffix;
+      var model = sm.add({ label: label });
+      component.get('classes').add(model);
+    });
+
+    //if component && target
+    var childComponents = component.get('components');
+    var that = this;
+    childComponents.each(function (child) {
+      that.preserveDefaultsAndAndProvideDuplicates(target, child, suffix);
+    });
+  },
+  disableAccessToDefaultClasses_OnInit: function disableAccessToDefaultClasses_OnInit() {
+    var components = this.em && this.em.getComponents();
+    if (!components) {
+      return;
+    }
+    var dummyRootComponent = {
+      get: function get(attr) {
+        if (attr === 'components') {
+          return new Backbone.Collection(components);
+        }
+        return new Backbone.Collection([]);
+      }
+    };
+    this.disableAccessToDefaultClasses(dummyRootComponent);
+  },
+  disableAccessToDefaultClasses_OnCompAdd: function disableAccessToDefaultClasses_OnCompAdd(component) {
+    this.disableAccessToDefaultClasses(component);
+  },
+  disableAccessToDefaultClasses: function disableAccessToDefaultClasses(component) {
+    if (!component) {
+      return;
+    }
+
+    var classes = component.get('classes');
+    classes.each(function (model) {
+      model.set('private', true);
+    });
+
+    var childComponents = component.get('components');
+    var that = this;
+    childComponents.each(function (child) {
+      that.disableAccessToDefaultClasses(child);
+    });
+  },
+  updateSelectorAdvanceMode: function updateSelectorAdvanceMode() {
+    var selected = this.target.getSelected();
+    this.compTarget = selected;
+
+    if (!selected || !selected.get) {
+      return;
+    }
+
+    var appliesto = document.getElementById(this.appliestoStateInputId);
+
+    var state = selected.get('state');
+    var result = "";
+    if (appliesto.value === "item") {
+      result = '#' + selected.getId();
+      result += state ? ':' + state : '';
+    } else {
+      result = this.collection.getActiveString();
+      if (result) {
+        result += state ? ':' + state : '';
+      } else {
+        result = "None!";
+      }
+    }
+    var el = this.el.querySelector('#' + this.pfx + 'sel');
+    el && (el.innerHTML = result);
+  },
+  isAdvanceModeValid: function isAdvanceModeValid() {
+    var config = this.config;
+
+    if (!config || !config.advanceMode || !config.advanceMode.enable) {
+      config.isAdvanceMode = false;
+      return false;
+    }
+    var adv = config.advanceMode;
+    if (!adv.appliestoLabel || !adv.appliestoOptionItemLabel || !adv.appliestoOptionCustomGroupLabel || !adv.resetItemStylesLabel || !adv.removeCustomGroupDialogTitle || !adv.removeCustomGroupFromSelectedItemLable || !adv.removeCustomGroupFromAllItemLable) {
+      config.isAdvanceMode = false;
+      return false;
+    }
+
+    if (adv.behaviourLabel) {
+      config.label = config.advanceMode.behaviourLabel;
+    }
+    if (adv.behaviourStatesDefaultOptionLabel) {
+      config.statesLabel = config.advanceMode.behaviourStatesDefaultOptionLabel;
+    }
+
+    if (adv.defaultBehaviourOnly === true) {
+      config.advanceMode.defaultBehaviour = "display:none;";
+    } else {
+      config.advanceMode.defaultBehaviour = "display:block;";
+    }
+
+    config.isAdvanceMode = true;
+    return true;
+  },
+  renderAdvanceMode: function renderAdvanceMode() {
+    var config = this.config;
+    this.$el.html(this.templateAdvanceMode({
+      selectedLabel: config.selectedLabel,
+      statesLabel: config.statesLabel,
+      label: config.label,
+      advanceMode: config.advanceMode,
+      pfx: this.pfx,
+      ppfx: this.ppfx
+    }));
+    this.$input = this.$el.find('input#' + this.newInputId);
+    this.$addBtn = this.$el.find('#' + this.addBtnId);
+    this.$classes = this.$el.find('#' + this.pfx + 'tags-c');
+    this.$states = this.$el.find('#' + this.stateInputId);
+    this.$statesC = this.$el.find('#' + this.stateInputC);
+    if (!config.advanceMode.defaultBehaviourOnly) {
+      this.$states.append(this.getStateOptions());
+    }
+    this.$appliestoStates = this.$el.find('#' + this.appliestoStateInputId);
+    this.$appliestoStates.append(this.getAppliestoStateOptions());
+    this.renderClasses();
+    this.$el.attr('class', this.className);
+    return this;
   }
+}, {
+  //static
+  //initialize() called twice and some other module might be using it for some other reason
+  //hence restrcited to single event callback
+  compAddEventListened: false
 });
+
+module.exports = ClassTagsView;
 /* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(1)))
 
 /***/ }),
@@ -29032,7 +29405,7 @@ var Backbone = __webpack_require__(0);
 var Selector = __webpack_require__(9);
 
 module.exports = Backbone.View.extend({
-  template: _.template('\n  <span id="<%= pfx %>checkbox" class="fa"></span>\n  <span id="<%= pfx %>tag-label">\n      <input class="<%= ppfx %>no-app" value="<%= label %>" <%= inputProp %>/>\n  </span>\n  <span id="<%= pfx %>close">&Cross;</span>'),
+  template: _.template('\n  <span id="<%= pfx %>checkbox" class="fa"></span>\n  <span id="<%= pfx %>tag-label">\n      <input class="<%= ppfx %>no-app" value="<%= label %>" title="<%= label %>" <%= inputProp %>/>\n  </span>\n  <span id="<%= pfx %>close">&Cross;</span>'),
 
   initialize: function initialize(o) {
     this.config = o.config || {};
@@ -29091,18 +29464,36 @@ module.exports = Backbone.View.extend({
    */
   changeStatus: function changeStatus() {
     this.model.set('active', !this.model.get('active'));
+    if (this.config.isAdvanceMode) {
+      this.model.set('activeAdvance', this.model.get('active'));
+
+      var activeFound = false;
+      this.coll.each(function (model) {
+        var activeAdvance = model.get('active') || false;
+        if (activeAdvance) {
+          activeFound = true;
+          return;
+        }
+      }, this);
+
+      this.toggelSelectorsArea(activeFound);
+    }
     this.target.trigger('targetClassUpdated');
   },
 
 
   /**
-   * Remove tag from the selected component
+  * Remove tag from the selected component
    * @param {Object} e
    * @private
    */
   removeTag: function removeTag(e) {
     var _this = this;
 
+    if (this.config.isAdvanceMode) {
+      this.removeTagsInAdvanceMode();
+      return;
+    }
     var em = this.target;
     var model = this.model;
     var coll = this.coll;
@@ -29114,6 +29505,104 @@ module.exports = Backbone.View.extend({
       return _this.remove();
     }, 0);
     em && em.trigger('targetClassRemoved');
+  },
+
+
+  /**
+   * Remove tags/classes/groups in advance mode, item or all items
+   * @private
+   */
+  removeTagsInAdvanceMode: function removeTagsInAdvanceMode() {
+    var mdlClass = this.ppfx + 'mdl-dialog-sm'; //gjs-mdl-dialog-sm
+    var groupDelMdlContainer = document.getElementById('group-del-panel');
+    if (!groupDelMdlContainer) {
+      var groupDelMdlContainer = document.createElement('div');
+      groupDelMdlContainer.style.display = "none";
+      groupDelMdlContainer.setAttribute('id', 'group-del-panel');
+      groupDelMdlContainer.innerHTML = '<div id="group-del-panel-op" op="false">' + '<span id="' + this.ppfx + 'mdl-btn-item" class="' + this.ppfx + 'custom-btn-style">From Current Item</span>' + '<span id="' + this.ppfx + 'mdl-btn-group" class="' + this.ppfx + 'custom-btn-style">From All Items</span>' + '</div>';
+    } else {
+      document.getElementById('group-del-panel-op').setAttribute('op', 'false');
+    }
+    var mdlDialog = document.querySelector('.' + this.ppfx + 'mdl-dialog'); //.gjs-mdl-dialog
+    mdlDialog.className += ' ' + mdlClass;
+    groupDelMdlContainer.style.display = 'block';
+    var modal = editor.Modal;
+    modal.setTitle('Remove Group Style');
+    modal.setContent(groupDelMdlContainer);
+    modal.open();
+
+    var removeClassFromAll = function removeClassFromAll(components, model) {
+      var init = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : true;
+
+      var processed = 0;
+      var removed = 0;
+      if (init) {
+        for (var i = 0; i < components.length; i++) {
+          var comp = components[i];
+          if (comp) {
+            if (comp.classes.remove(model)) {
+              removed++;
+            }
+            processed++;
+            var ret = removeClassFromAll(comp.components, model, false);
+            processed += ret[0];
+            removed += ret[1];
+          }
+        }
+      } else {
+        components && components.each(function (comp) {
+          if (comp) {
+            if (comp.get('classes').remove(model)) {
+              removed++;
+            }
+            processed++;
+            var ret = removeClassFromAll(comp.get('components'), model, false);
+            processed += ret[0];
+            removed += ret[1];
+          }
+        });
+      }
+
+      return [processed, removed];
+    };
+
+    var THAT = this;
+    document.getElementById(this.ppfx + 'mdl-btn-item').onclick = function () {
+      var em = THAT.target;
+      var model = THAT.model;
+      var coll = THAT.coll;
+      var el = THAT.el;
+      var sel = em && em.get('selectedComponent');
+      sel && sel.get & sel.get('classes').remove(model);
+      coll && coll.remove(model);
+      setTimeout(function () {
+        return THAT.remove();
+      }, 0);
+      em && em.trigger('targetClassRemoved');
+
+      modal.close();
+    };
+
+    document.getElementById(this.ppfx + 'mdl-btn-group').onclick = function () {
+      var em = THAT.target;
+      var model = THAT.model;
+      var coll = THAT.coll;
+      var el = THAT.el;
+      var comps = em && em.getComponents();
+      var ret = removeClassFromAll(comps, model);
+      console.log("removed: " + ret[1] + ", processed: " + ret[0]);
+      coll && coll.remove(model);
+      setTimeout(function () {
+        return THAT.remove();
+      }, 0);
+      em && em.trigger('targetClassRemoved');
+
+      modal.close();
+    };
+
+    modal.getModel().once('change:open', function () {
+      mdlDialog.className = mdlDialog.className.replace(mdlClass, '');
+    });
   },
 
 
@@ -29164,6 +29653,20 @@ module.exports = Backbone.View.extend({
     this.updateStatus();
     this.updateInputLabel();
     return this;
+  },
+
+
+  //-------------------------------------------------------------//
+  //---------------Advance Mode Functions------------------------//
+  //-------------------------------------------------------------//
+
+  toggelSelectorsArea: function toggelSelectorsArea(show) {
+    //gjs-sm-sectors
+    if (show) {
+      document.getElementById(this.ppfx + "sm-sectors").style.display = "block";
+    } else {
+      document.getElementById(this.ppfx + "sm-sectors").style.display = "none";
+    }
   }
 });
 /* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(1)))
@@ -30691,8 +31194,6 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
         "interface": kw("class"),
         "implements": C,
         "namespace": C,
-        "module": kw("module"),
-        "enum": kw("module"),
 
         // scope modifiers
         "public": kw("modifier"),
@@ -30799,7 +31300,7 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
           var kw = keywords[word]
           return ret(kw.type, kw.style, word)
         }
-        if (word == "async" && stream.match(/^\s*[\(\w]/, false))
+        if (word == "async" && stream.match(/^(\s|\/\*.*?\*\/)*[\(\w]/, false))
           return ret("async", "keyword", word)
       }
       return ret("variable", "variable", word)
@@ -31016,9 +31517,12 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
       if (isTS && value == "type") {
         cx.marked = "keyword"
         return cont(typeexpr, expect("operator"), typeexpr, expect(";"));
-      } if (isTS && value == "declare") {
+      } else if (isTS && value == "declare") {
         cx.marked = "keyword"
         return cont(statement)
+      } else if (isTS && (value == "module" || value == "enum") && cx.stream.match(/^\s*\w/, false)) {
+        cx.marked = "keyword"
+        return cont(pushlex("form"), pattern, expect("{"), pushlex("}"), block, poplex, poplex)
       } else {
         return cont(pushlex("stat"), maybelabel);
       }
@@ -31032,7 +31536,6 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
     if (type == "class") return cont(pushlex("form"), className, poplex);
     if (type == "export") return cont(pushlex("stat"), afterExport, poplex);
     if (type == "import") return cont(pushlex("stat"), afterImport, poplex);
-    if (type == "module") return cont(pushlex("form"), pattern, expect("{"), pushlex("}"), block, poplex, poplex)
     if (type == "async") return cont(statement)
     if (value == "@") return cont(expression, statement)
     return pass(pushlex("stat"), expression, expect(";"), poplex);
@@ -31082,6 +31585,8 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
     if (type == "=>") return cont(pushcontext, noComma ? arrowBodyNoComma : arrowBody, popcontext);
     if (type == "operator") {
       if (/\+\+|--/.test(value) || isTS && value == "!") return cont(me);
+      if (isTS && value == "<" && cx.stream.match(/^([^>]|<.*?>)*>\s*\(/, false))
+        return cont(pushlex(">"), commasep(typeexpr, ">"), poplex, me);
       if (value == "?") return cont(expression, expect(":"), expr);
       return cont(expr);
     }
@@ -31208,6 +31713,18 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
       if (value == "?") return cont(maybetype);
     }
   }
+  function mayberettype(type) {
+    if (isTS && type == ":") {
+      if (cx.stream.match(/^\s*\w+\s+is\b/, false)) return cont(expression, isKW, typeexpr)
+      else return cont(typeexpr)
+    }
+  }
+  function isKW(_, value) {
+    if (value == "is") {
+      cx.marked = "keyword"
+      return cont()
+    }
+  }
   function typeexpr(type, value) {
     if (type == "variable" || value == "void") {
       if (value == "keyof") {
@@ -31250,6 +31767,12 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
   }
   function maybeTypeArgs(_, value) {
     if (value == "<") return cont(pushlex(">"), commasep(typeexpr, ">"), poplex, afterType)
+  }
+  function typeparam() {
+    return pass(typeexpr, maybeTypeDefault)
+  }
+  function maybeTypeDefault(_, value) {
+    if (value == "=") return cont(typeexpr)
   }
   function vardef() {
     return pass(pattern, maybetype, maybeAssign, vardefCont);
@@ -31304,8 +31827,8 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
   function functiondef(type, value) {
     if (value == "*") {cx.marked = "keyword"; return cont(functiondef);}
     if (type == "variable") {register(value); return cont(functiondef);}
-    if (type == "(") return cont(pushcontext, pushlex(")"), commasep(funarg, ")"), poplex, maybetype, statement, popcontext);
-    if (isTS && value == "<") return cont(pushlex(">"), commasep(typeexpr, ">"), poplex, functiondef)
+    if (type == "(") return cont(pushcontext, pushlex(")"), commasep(funarg, ")"), poplex, mayberettype, statement, popcontext);
+    if (isTS && value == "<") return cont(pushlex(">"), commasep(typeparam, ">"), poplex, functiondef)
   }
   function funarg(type, value) {
     if (value == "@") cont(expression, funarg)
@@ -31321,7 +31844,7 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
     if (type == "variable") {register(value); return cont(classNameAfter);}
   }
   function classNameAfter(type, value) {
-    if (value == "<") return cont(pushlex(">"), commasep(typeexpr, ">"), poplex, classNameAfter)
+    if (value == "<") return cont(pushlex(">"), commasep(typeparam, ">"), poplex, classNameAfter)
     if (value == "extends" || value == "implements" || (isTS && type == ","))
       return cont(isTS ? typeexpr : expression, classNameAfter);
     if (type == "{") return cont(pushlex("}"), classBody, poplex);
@@ -42382,148 +42905,148 @@ module.exports = {
 var $ = Backbone.$;
 
 module.exports = {
-  getOffsetMethod: function getOffsetMethod(state) {
-    var method = state || '';
-    return 'get' + method + 'OffsetViewerEl';
-  },
-  run: function run(editor, sender, opts) {
-    var opt = opts || {};
-    var state = opt.state || '';
-    var config = editor.getConfig();
+    getOffsetMethod: function getOffsetMethod(state) {
+        var method = state || '';
+        return 'get' + method + 'OffsetViewerEl';
+    },
+    run: function run(editor, sender, opts) {
+        var opt = opts || {};
+        var state = opt.state || '';
+        var config = editor.getConfig();
 
-    if (!config.showOffsets || !config.showOffsetsSelected && state == 'Fixed') {
-      return;
+        if (!config.showOffsets || !config.showOffsetsSelected && state == 'Fixed') {
+            return;
+        }
+
+        var canvas = editor.Canvas;
+        var el = opt.el || '';
+        var pos = opt.elPos || canvas.getElementPos(el);
+        var style = window.getComputedStyle(el);
+        var ppfx = this.ppfx;
+        var stateVar = state + 'State';
+        var method = this.getOffsetMethod(state);
+        var offsetViewer = canvas[method]();
+        offsetViewer.style.display = 'block';
+
+        var marginT = this['marginT' + state];
+        var marginB = this['marginB' + state];
+        var marginL = this['marginL' + state];
+        var marginR = this['marginR' + state];
+        var padT = this['padT' + state];
+        var padB = this['padB' + state];
+        var padL = this['padL' + state];
+        var padR = this['padR' + state];
+
+        if (!this[stateVar]) {
+            var stateLow = state.toLowerCase();
+            var marginName = stateLow + 'margin-v';
+            var paddingName = stateLow + 'padding-v';
+            var marginV = $('<div class="' + ppfx + 'marginName">').get(0);
+            var paddingV = $('<div class="' + ppfx + 'paddingName">').get(0);
+            var marginEls = ppfx + marginName + '-el';
+            var paddingEls = ppfx + paddingName + '-el';
+            var fullMargName = marginEls + ' ' + (ppfx + marginName);
+            var fullPadName = paddingEls + ' ' + (ppfx + paddingName);
+            marginT = $('<div class="' + fullMargName + '-top"></div>').get(0);
+            marginB = $('<div class="' + fullMargName + '-bottom"></div>').get(0);
+            marginL = $('<div class="' + fullMargName + '-left"></div>').get(0);
+            marginR = $('<div class="' + fullMargName + '-right"></div>').get(0);
+            padT = $('<div class="' + fullPadName + '-top"></div>').get(0);
+            padB = $('<div class="' + fullPadName + '-bottom"></div>').get(0);
+            padL = $('<div class="' + fullPadName + '-left"></div>').get(0);
+            padR = $('<div class="' + fullPadName + '-right"></div>').get(0);
+            this['marginT' + state] = marginT;
+            this['marginB' + state] = marginB;
+            this['marginL' + state] = marginL;
+            this['marginR' + state] = marginR;
+            this['padT' + state] = padT;
+            this['padB' + state] = padB;
+            this['padL' + state] = padL;
+            this['padR' + state] = padR;
+            marginV.appendChild(marginT);
+            marginV.appendChild(marginB);
+            marginV.appendChild(marginL);
+            marginV.appendChild(marginR);
+            paddingV.appendChild(padT);
+            paddingV.appendChild(padB);
+            paddingV.appendChild(padL);
+            paddingV.appendChild(padR);
+            offsetViewer.appendChild(marginV);
+            offsetViewer.appendChild(paddingV);
+            this[stateVar] = '1';
+        }
+
+        var unit = 'px';
+        var marginLeftSt = style.marginLeft.replace(unit, '');
+        var marginTopSt = parseInt(style.marginTop.replace(unit, ''));
+        var marginBottomSt = parseInt(style.marginBottom.replace(unit, ''));
+        var mtStyle = marginT.style;
+        var mbStyle = marginB.style;
+        var mlStyle = marginL.style;
+        var mrStyle = marginR.style;
+        var ptStyle = padT.style;
+        var pbStyle = padB.style;
+        var plStyle = padL.style;
+        var prStyle = padR.style;
+        var posLeft = parseInt(pos.left);
+
+        // Margin style
+        mtStyle.height = style.marginTop;
+        mtStyle.width = style.width;
+        mtStyle.top = pos.top - style.marginTop.replace(unit, '') + unit;
+        mtStyle.left = posLeft + unit;
+
+        mbStyle.height = style.marginBottom;
+        mbStyle.width = style.width;
+        mbStyle.top = pos.top + pos.height + unit;
+        mbStyle.left = posLeft + unit;
+
+        var marginSideH = pos.height + marginTopSt + marginBottomSt + unit;
+        var marginSideT = pos.top - marginTopSt + unit;
+        mlStyle.height = marginSideH;
+        mlStyle.width = style.marginLeft;
+        mlStyle.top = marginSideT;
+        mlStyle.left = posLeft - marginLeftSt + unit;
+
+        mrStyle.height = marginSideH;
+        mrStyle.width = style.marginRight;
+        mrStyle.top = marginSideT;
+        mrStyle.left = posLeft + pos.width + unit;
+
+        // Padding style
+        var padTop = parseInt(style.paddingTop.replace(unit, ''));
+        ptStyle.height = style.paddingTop;
+        ptStyle.width = style.width;
+        ptStyle.top = pos.top + unit;
+        ptStyle.left = posLeft + unit;
+
+        var padBot = parseInt(style.paddingBottom.replace(unit, ''));
+        pbStyle.height = style.paddingBottom;
+        pbStyle.width = style.width;
+        pbStyle.top = pos.top + pos.height - padBot + unit;
+        pbStyle.left = posLeft + unit;
+
+        var padSideH = pos.height - padBot - padTop + unit;
+        var padSideT = pos.top + padTop + unit;
+        plStyle.height = padSideH;
+        plStyle.width = style.paddingLeft;
+        plStyle.top = padSideT;
+        plStyle.left = pos.left + unit;
+
+        var padRight = parseInt(style.paddingRight.replace(unit, ''));
+        prStyle.height = padSideH;
+        prStyle.width = style.paddingRight;
+        prStyle.top = padSideT;
+        prStyle.left = pos.left + pos.width - padRight + unit;
+    },
+    stop: function stop(editor, sender, opts) {
+        var opt = opts || {};
+        var state = opt.state || '';
+        var method = this.getOffsetMethod(state);
+        var canvas = editor.Canvas;
+        var offsetViewer = canvas[method]();
+        offsetViewer.style.display = 'none';
     }
-
-    var canvas = editor.Canvas;
-    var el = opt.el || '';
-    var pos = opt.elPos || canvas.getElementPos(el);
-    var style = window.getComputedStyle(el);
-    var ppfx = this.ppfx;
-    var stateVar = state + 'State';
-    var method = this.getOffsetMethod(state);
-    var offsetViewer = canvas[method]();
-    offsetViewer.style.display = 'block';
-
-    var marginT = this['marginT' + state];
-    var marginB = this['marginB' + state];
-    var marginL = this['marginL' + state];
-    var marginR = this['marginR' + state];
-    var padT = this['padT' + state];
-    var padB = this['padB' + state];
-    var padL = this['padL' + state];
-    var padR = this['padR' + state];
-
-    if (!this[stateVar]) {
-      var stateLow = state.toLowerCase();
-      var marginName = stateLow + 'margin-v';
-      var paddingName = stateLow + 'padding-v';
-      var marginV = $('<div class="' + ppfx + 'marginName">').get(0);
-      var paddingV = $('<div class="' + ppfx + 'paddingName">').get(0);
-      var marginEls = ppfx + marginName + '-el';
-      var paddingEls = ppfx + paddingName + '-el';
-      var fullMargName = marginEls + ' ' + (ppfx + marginName);
-      var fullPadName = paddingEls + ' ' + (ppfx + paddingName);
-      marginT = $('<div class="' + fullMargName + '-top"></div>').get(0);
-      marginB = $('<div class="' + fullMargName + '-bottom"></div>').get(0);
-      marginL = $('<div class="' + fullMargName + '-left"></div>').get(0);
-      marginR = $('<div class="' + fullMargName + '-right"></div>').get(0);
-      padT = $('<div class="' + fullPadName + '-top"></div>').get(0);
-      padB = $('<div class="' + fullPadName + '-bottom"></div>').get(0);
-      padL = $('<div class="' + fullPadName + '-left"></div>').get(0);
-      padR = $('<div class="' + fullPadName + '-right"></div>').get(0);
-      this['marginT' + state] = marginT;
-      this['marginB' + state] = marginB;
-      this['marginL' + state] = marginL;
-      this['marginR' + state] = marginR;
-      this['padT' + state] = padT;
-      this['padB' + state] = padB;
-      this['padL' + state] = padL;
-      this['padR' + state] = padR;
-      marginV.appendChild(marginT);
-      marginV.appendChild(marginB);
-      marginV.appendChild(marginL);
-      marginV.appendChild(marginR);
-      paddingV.appendChild(padT);
-      paddingV.appendChild(padB);
-      paddingV.appendChild(padL);
-      paddingV.appendChild(padR);
-      offsetViewer.appendChild(marginV);
-      offsetViewer.appendChild(paddingV);
-      this[stateVar] = '1';
-    }
-
-    var unit = 'px';
-    var marginLeftSt = style.marginLeft.replace(unit, '');
-    var marginTopSt = parseInt(style.marginTop.replace(unit, ''));
-    var marginBottomSt = parseInt(style.marginBottom.replace(unit, ''));
-    var mtStyle = marginT.style;
-    var mbStyle = marginB.style;
-    var mlStyle = marginL.style;
-    var mrStyle = marginR.style;
-    var ptStyle = padT.style;
-    var pbStyle = padB.style;
-    var plStyle = padL.style;
-    var prStyle = padR.style;
-    var posLeft = parseInt(pos.left);
-
-    // Margin style
-    mtStyle.height = style.marginTop;
-    mtStyle.width = style.width;
-    mtStyle.top = pos.top - style.marginTop.replace(unit, '') + unit;
-    mtStyle.left = posLeft + unit;
-
-    mbStyle.height = style.marginBottom;
-    mbStyle.width = style.width;
-    mbStyle.top = pos.top + pos.height + unit;
-    mbStyle.left = posLeft + unit;
-
-    var marginSideH = pos.height + marginTopSt + marginBottomSt + unit;
-    var marginSideT = pos.top - marginTopSt + unit;
-    mlStyle.height = marginSideH;
-    mlStyle.width = style.marginLeft;
-    mlStyle.top = marginSideT;
-    mlStyle.left = posLeft - marginLeftSt + unit;
-
-    mrStyle.height = marginSideH;
-    mrStyle.width = style.marginRight;
-    mrStyle.top = marginSideT;
-    mrStyle.left = posLeft + pos.width + unit;
-
-    // Padding style
-    var padTop = parseInt(style.paddingTop.replace(unit, ''));
-    ptStyle.height = style.paddingTop;
-    ptStyle.width = style.width;
-    ptStyle.top = pos.top + unit;
-    ptStyle.left = posLeft + unit;
-
-    var padBot = parseInt(style.paddingBottom.replace(unit, ''));
-    pbStyle.height = style.paddingBottom;
-    pbStyle.width = style.width;
-    pbStyle.top = pos.top + pos.height - padBot + unit;
-    pbStyle.left = posLeft + unit;
-
-    var padSideH = pos.height - padBot - padTop + unit;
-    var padSideT = pos.top + padTop + unit;
-    plStyle.height = padSideH;
-    plStyle.width = style.paddingLeft;
-    plStyle.top = padSideT;
-    plStyle.left = pos.left + unit;
-
-    var padRight = parseInt(style.paddingRight.replace(unit, ''));
-    prStyle.height = padSideH;
-    prStyle.width = style.paddingRight;
-    prStyle.top = padSideT;
-    prStyle.left = pos.left + pos.width - padRight + unit;
-  },
-  stop: function stop(editor, sender, opts) {
-    var opt = opts || {};
-    var state = opt.state || '';
-    var method = this.getOffsetMethod(state);
-    var canvas = editor.Canvas;
-    var offsetViewer = canvas[method]();
-    offsetViewer.style.display = 'none';
-  }
 };
 /* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(0)))
 
@@ -46230,7 +46753,7 @@ module.exports = function (_ref) {
     };
     /*
     const CashEvent = function(node, eventName, namespaces, delegate, originalCallback, runOnce) {
-       const eventCache = getData(node,'_cashEvents') || setData(node, '_cashEvents', {});
+        const eventCache = getData(node,'_cashEvents') || setData(node, '_cashEvents', {});
       const remove = function(c, namespace){
         if ( c && originalCallback !== c ) { return; }
         if ( namespace && this.namespaces.indexOf(namespace) < 0 ) { return; }
@@ -46240,24 +46763,24 @@ module.exports = function (_ref) {
         var t = this;
         if (delegate) {
           t = e.target;
-           while (t && !matches(t, delegate)) {
+            while (t && !matches(t, delegate)) {
             if (t === this) {
               return (t = false);
             }
             t = t.parentNode;
           }
         }
-         if (t) {
+          if (t) {
           originalCallback.call(t, e, e.data);
           if ( runOnce ) { remove(); }
         }
-       };
-       this.remove = remove;
+        };
+        this.remove = remove;
       this.namespaces = namespaces;
-       node.addEventListener(eventName, callback);
-       eventCache[eventName] = eventCache[eventName] || [];
+        node.addEventListener(eventName, callback);
+        eventCache[eventName] = eventCache[eventName] || [];
       eventCache[eventName].push(this);
-       return this;
+        return this;
     }
     */
 
