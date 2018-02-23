@@ -17,5 +17,15 @@ module.exports = Backbone.Collection.extend({
     const result = [];
     this.each(selector => result.push(selector.getFullName()));
     return result.join('').trim();
+  },
+  
+  getActiveString() {
+    const result = [];
+    this.each(selector => {
+		if(selector.get('active')){
+			result.push(selector.getFullName());
+		}
+	});
+    return result.join('').trim();
   }
 });

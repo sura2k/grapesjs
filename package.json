@@ -76,11 +76,13 @@
     "lint": "eslint src",
     "check": "npm run lint && npm run test",
     "build": "npm run check && npm run v:patch && npm run build-dev && webpack --env=prod",
-    "build-n": "npm run check && npm run build:css && webpack --env=prod",
+	"build-prod-js": "npm run build-dev && webpack --env=prod",
+    "build-prod": "npm run check && npm run build:css && webpack --env=prod",
     "build-dev": "webpack --env=dev && npm run build:css",
     "build:css": "node-sass src/styles/scss/main.scss dist/css/grapes.min.css --output-style compressed",
     "v:patch": "npm version --no-git-tag-version patch",
     "start": "webpack-dev-server --open --progress --colors & npm run build:css -- -w",
+	"start-nw": "webpack-dev-server --open --progress --colors --host 0.0.0.0 & npm run build:css -- -w",
     "test": "cross-env NODE_PATH=./src mocha --compilers js:babel-core/register --require test/helper.js --timeout 10000 --recursive test/main.js",
     "test:dev": "npm test -- -R min -w"
   }

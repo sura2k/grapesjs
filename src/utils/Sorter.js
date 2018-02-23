@@ -915,7 +915,11 @@ module.exports = Backbone.View.extend({
     var dragHelper = this.dragHelper;
 
     if(dragHelper) {
-      dragHelper.remove();
+	  try{
+		dragHelper.remove();
+	  }catch(e){
+		dragHelper.parentNode.removeChild(dragHelper);
+	  }
       this.dragHelper = null;
     }
 
