@@ -548,6 +548,46 @@ const Component = Backbone.Model.extend(Styleable).extend(
             command: 'tlb-delete'
           });
         }
+        //3. GOES TO CUSTOM COMPONENTS IN THE PLUGIN
+        //-----TEST (SELECT_IN_TOOLBAR)-----//
+        //Checking 'copyable' only to execute as a selType allowed component. In a real case has to have a flag. Ex: this(model).attributes.attributes['selType'] and could be empty in the initial state
+        //Should use this in your own plugin components
+        //How: Override initToolbar() in your selTyped components, call the super initToolbar() and add the following. SInce it is added into the sepcific component, you may not need to add a flag
+        if (model.get('copyable') || model.get('sel')) {
+          tb.push({
+            attributes: { class: 'some-class' },
+            command: '',
+            events: {
+              //overrides default events (i.e. mousedown) by adding change event since now it is a <select>, but 'handleChange' handler must be existed
+              change: function(event) {
+                const opts = { event };
+                const ed = this.editor;
+                const model = ed.getSelected();
+                const selType =
+                  opts.event.target.options[opts.event.target.selectedIndex]
+                    .value;
+                delete model.attributes.attributes['selType'];
+                model.attributes.attributes['selType'] = selType;
+              }
+            },
+            custom: {
+              model: this,
+              render: function() {
+                const selType = model.attributes.attributes['selType'];
+                const selTypeXSelected = selType == 'sel-x' ? 'selected' : '';
+                const selTypeYSelected = selType == 'sel-y' ? 'selected' : '';
+                const selTypeNoneSelected =
+                  !selTypeXSelected && !selTypeYSelected ? 'selected' : '';
+                return `<select class="gjs-field">
+								<option value="sel-x" ${selTypeXSelected}>TypeX</option>
+								<option value="sel-y" ${selTypeYSelected}>TypeY</option>
+								<option value="" ${selTypeNoneSelected}>None</option>
+							</select>`;
+              }
+            }
+          });
+        }
+        //End-----TEST (SELECT_IN_TOOLBAR)-----//
         model.set('toolbar', tb);
       }
     },
