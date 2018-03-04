@@ -119,6 +119,17 @@ module.exports = () => {
       view: ComponentView
     }
   ];
+  //0. ONLY CHANGE TO CORE
+  //-----EXPOSE INTERNAL COMPONENTS (To override SELECT_IN_TOOLBAR)-----//
+  //With this exposing, you can extend ToolbarButton and ToolbarButtonView in your own plugin
+  var internalComponentTypes = [
+    {
+      id: 'tb-button',
+      model: require('./model/ToolbarButton'),
+      view: require('./view/ToolbarButtonView')
+    }
+  ];
+  //End-----EXPOSE INTERNAL COMPONENTS (To override SELECT_IN_TOOLBAR)-----//
 
   return {
     Component,
@@ -128,6 +139,8 @@ module.exports = () => {
     ComponentsView,
 
     componentTypes,
+
+    internalComponentTypes, //0. ONLY CHANGE TO CORE //-----EXPOSE INTERNAL COMPONENTS (To override SELECT_IN_TOOLBAR)-----//
 
     /**
      * Name of the module
@@ -502,6 +515,26 @@ module.exports = () => {
       }
       return;
     },
+
+    //0. ONLY CHANGE TO CORE
+    //-----EXPOSE INTERNAL COMPONENTS (To override SELECT_IN_TOOLBAR)-----//
+    /**
+     * Get internal component type
+     * @param {string} type
+     * @private
+     */
+    getInternalType(type) {
+      var itt = internalComponentTypes;
+
+      for (var c = 0; c < itt.length; c++) {
+        var ittId = itt[c].id;
+        if (ittId == type) {
+          return itt[c];
+        }
+      }
+      return;
+    },
+    //End-----EXPOSE INTERNAL COMPONENTS (To override SELECT_IN_TOOLBAR)-----//
 
     /**
      * Triggered when the selected component is changed
